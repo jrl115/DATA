@@ -169,18 +169,6 @@ if archivo_inscritos:
         ])
         st.session_state["metricas_auto_inscritos"] = df_metricas_auto_ins
 
-        with st.expander("Programado por nivel (opcional)"):
-            programados = {fila["Nivel"]: st.number_input(f"Programado para {fila['Nivel']}", min_value=0, value=0, key=f"prog_{fila['Nivel']}") for _, fila in conteo_inscritos_por_nivel.iterrows()}
-        if not conteo_inscritos_por_nivel.empty:
-            conteo_inscritos_por_nivel["Programado"] = conteo_inscritos_por_nivel["Nivel"].map(programados)
-            total_row = pd.DataFrame({
-                "Nivel": ["TOTAL"],
-                "Alcanzado": [conteo_inscritos_por_nivel["Alcanzado"].sum()],
-                "Programado": [conteo_inscritos_por_nivel["Programado"].sum()],
-            })
-            resumen_final = pd.concat([conteo_inscritos_por_nivel, total_row], ignore_index=True)
-            st.subheader("Resumen final")
-            st.dataframe(resumen_final, use_container_width=True)
 
 # ================= SECCIÓN: EGRESADOS ================= #
 st.header("Reporte de Egresados")
@@ -191,6 +179,7 @@ conteo_egresados_por_carrera = pd.DataFrame()
 if archivo_egresados:
     df_eg = leer_excel_xlsb(archivo_egresados)
 
+    # ---- Clasificación de nivel (la puedes conservar si la usas en filtros)
     def clasificar_nivel_eg(carrera):
         carrera = str(carrera).lower()
         if "maestría" in carrera:
@@ -205,6 +194,7 @@ if archivo_egresados:
 
     df_eg["Nivel"] = df_eg.get("Carrera", "").apply(clasificar_nivel_eg)
 
+    # ---- Filtros
     cols_f = [c for c in ["Carrera", "Sexo", "Periodo", "Grupo", "Ciclo"] if c in df_eg.columns]
     with st.expander("Filtros", expanded=True):
         filtros_eg = {}
@@ -217,6 +207,7 @@ if archivo_egresados:
         if valores:
             df_eg_f = df_eg_f[df_eg_f[col].isin(valores)]
 
+    # ---- (Opcional) filtro por generación por nivel
     generaciones_filtradas = {}
     if "Generación" in df_eg_f.columns and "Nivel" in df_eg_f.columns:
         for nivel in sorted(df_eg_f["Nivel"].dropna().unique().tolist()):
@@ -228,11 +219,75 @@ if archivo_egresados:
                 mask = mask | ((df_eg_f["Nivel"] == nivel) & (df_eg_f["Generación"].isin(gens)))
             df_eg_f = df_eg_f[mask]
 
+    # ---- Conteo por carrera (visual)
     if not df_eg_f.empty and "Carrera" in df_eg_f.columns:
         conteo_egresados_por_carrera = df_eg_f["Carrera"].value_counts().reset_index()
         conteo_egresados_por_carrera.columns = ["Carrera", "Total de Egresados"]
         st.subheader("Total de egresados por carrera (filtrado)")
         st.dataframe(conteo_egresados_por_carrera, use_container_width=True)
+
+    # ---- Mapeo Carrera -> Código de Programa para los 8 indicadores requeridos
+        # ---- Mapeo Carrera -> Código de Programa
+    def map_program_code(carrera: str) -> str:
+        t = norm_txt(carrera)
+        if "maestría en ingeniería aeroespacial" in t:
+            return "MIA"
+        if "ingeniería aeronáutica en manufactura" in t:
+            return "IAM"
+        if "ingeniería en diseño mecánico aeronáutico" in t:
+            return "IDMA"
+        if "electrónica y control de sistemas de aeronaves" in t:
+            return "IECSA"
+        if "ingeniería en mantenimiento aeronáutico" in t:
+            return "IMA"
+        if ("técnico" in t or "tsu" in t) and "aviónica" in t:
+            return "TSUA"
+        if ("técnico" in t or "tsu" in t) and ("mantenimiento" in t or "planeador y motor" in t):
+            return "TSUM"
+        if ("técnico" in t or "tsu" in t) and ("manufactura" in t or "maquinados de precisión" in t or "manufactura de aeronaves" in t):
+            return "TSUF"
+        return ""
+
+    df_eg_f["_prog"] = df_eg_f["Carrera"].map(map_program_code)
+
+    codigos_obj = ["TSUA", "TSUM", "TSUF", "IAM", "IDMA", "IECSA", "IMA", "MIA"]
+
+    # ---- Conteo de egresados por programa
+    conteo_prog = df_eg_f["_prog"].value_counts().to_dict()
+
+    # ---- Entrada manual para "Ingresos" por programa
+    st.subheader("Ingresos por programa educativo (para eficiencia terminal)")
+    ingresos_manuales = {}
+    for cod in codigos_obj:
+        ingresos_manuales[cod] = st.number_input(
+            f"Ingresos para {cod}",
+            min_value=0,
+            value=0,
+            key=f"ingresos_{cod}"
+        )
+
+    # ---- Calculamos eficiencia terminal = egresados / ingresos
+    resultados_et = {}
+    for cod in codigos_obj:
+        egresados = conteo_prog.get(cod, 0)
+        ingresos = ingresos_manuales.get(cod, 0)
+        if ingresos > 0:
+            resultados_et[cod] = egresados / ingresos
+        else:
+            resultados_et[cod] = np.nan
+
+    # ---- DataFrame con métricas automáticas para indicadores
+    df_metricas_auto_eg = pd.DataFrame([
+        {
+            "Indicador": "Eficiencia Terminal por cohorte por Programa Educativo",
+            "Responsable": cod,
+            "Resultado": resultados_et[cod]
+        }
+        for cod in codigos_obj
+    ])
+
+    st.session_state["metricas_auto_egresados"] = df_metricas_auto_eg
+
 
 # ================= SECCIÓN: INDICADORES ================= #
 st.header("Comparativo de Indicadores vs Metas")
@@ -274,25 +329,78 @@ if archivo_indicadores:
     st.caption(f"Mostrando {ini+1}–{fin} de {n_total} indicadores")
 
     with st.form("frm_captura_manual"):
+        def _parse_val(txt: str, use_pct: bool):
+            """Convierte texto a número. Si use_pct:
+               - Si incluye '%' o el valor > 1, divide entre 100
+               - Si ya está en proporción (0..1) no divide
+            """
+            v = to_num(txt)
+            if pd.isna(v):
+                return np.nan
+            s = str(txt).strip()
+            if use_pct and (s.endswith("%") or float(v) > 1):
+                return float(v) / 100.0
+            return float(v)
+
         registros = []
+        pct_flags = {}  # guardamos el modo porcentaje por indicador en esta página
+
         for idx, row in df_page.iterrows():
             nom_ind = row.get("Indicador", f"Indicador {idx+1}")
             resp = row.get("Responsable", "")
             st.markdown(f"#### {nom_ind}")
             key_base = f"ind::{norm_txt(nom_ind)}::{norm_txt(resp)}"
+
+            # estado previo
+            v1_prev = st.session_state["captura_manual"].get(key_base+"::v1", "")
+            v2_prev = st.session_state["captura_manual"].get(key_base+"::v2", "")
+            pct_prev = bool(st.session_state["captura_manual"].get(key_base+"::pct", False))
+
+            # Toggle por indicador
+            pct_mode = st.checkbox(
+                "Escribir variables como porcentaje (50 → 0.5)",
+                value=pct_prev,
+                key=f"{key_base}::pct_ui"
+            )
+            pct_flags[key_base] = pct_mode
+
             col1, col2 = st.columns(2)
             with col1:
-                v1 = st.text_input("Variable 1", value=st.session_state["captura_manual"].get(key_base+"::v1", ""), key=f"{key_base}::v1_ui")
-                res = st.text_input("Resultado",  value=st.session_state["captura_manual"].get(key_base+"::res", ""), key=f"{key_base}::res_ui")
+                v1 = st.text_input("Variable 1", value=str(v1_prev), key=f"{key_base}::v1_ui")
             with col2:
-                v2 = st.text_input("Variable 2", value=st.session_state["captura_manual"].get(key_base+"::v2", ""), key=f"{key_base}::v2_ui")
-                com = st.text_input("Comentarios", value=st.session_state["captura_manual"].get(key_base+"::com", ""), key=f"{key_base}::com_ui")
+                v2 = st.text_input("Variable 2", value=str(v2_prev), key=f"{key_base}::v2_ui")
+
+            # Parseo con modo porcentaje por indicador
+            v1_num = _parse_val(v1, pct_mode)
+            v2_num = _parse_val(v2, pct_mode)
+
+            # Cálculo de resultado = v2 / v1
+            if pd.notna(v1_num) and float(v1_num) != 0 and pd.notna(v2_num):
+                res_calc = float(v2_num) / float(v1_num)
+                res_txt = f"{res_calc:.6f}"
+            else:
+                res_calc = np.nan
+                res_txt = ""
+
+            # Comentarios
+            com = st.text_input(
+                "Comentarios",
+                value=st.session_state["captura_manual"].get(key_base+"::com", ""),
+                key=f"{key_base}::com_ui"
+            )
+
+            st.caption(
+                "Resultado = Variable 2 ÷ Variable 1. "
+                "Con el toggle activo puedes escribir '50' o '50%' y se interpreta como 0.5."
+            )
+            st.text_input("Resultado (calculado)", value=res_txt, key=f"{key_base}::res_ui", disabled=True)
+
             registros.append({
                 "Indicador": nom_ind,
                 "Responsable": resp,
-                "Variable 1": v1,
-                "Variable 2": v2,
-                "Resultado": res,
+                "Variable 1": v1,        # texto tal cual
+                "Variable 2": v2,        # texto tal cual
+                "Resultado": res_calc,   # numérico (proporción)
                 "Comentarios": com,
                 "_key": key_base,
             })
@@ -306,32 +414,66 @@ if archivo_indicadores:
 
     if submitted:
         for r in registros:
-            st.session_state["captura_manual"][r["_key"]+"::v1"] = r["Variable 1"]
-            st.session_state["captura_manual"][r["_key"]+"::v2"] = r["Variable 2"]
-            st.session_state["captura_manual"][r["_key"]+"::res"] = r["Resultado"]
-            st.session_state["captura_manual"][r["_key"]+"::com"] = r["Comentarios"]
+            kb = r["_key"]
+            st.session_state["captura_manual"][kb+"::v1"]  = r["Variable 1"]
+            st.session_state["captura_manual"][kb+"::v2"]  = r["Variable 2"]
+            st.session_state["captura_manual"][kb+"::com"] = r["Comentarios"]
+            # Guardar resultado numérico si existe
+            if pd.notna(r["Resultado"]):
+                st.session_state["captura_manual"][kb+"::res"] = r["Resultado"]
+            else:
+                st.session_state["captura_manual"].pop(kb+"::res", None)
+            # Guardar toggle por indicador
+            st.session_state["captura_manual"][kb+"::pct"] = bool(pct_flags.get(kb, False))
         st.success("Datos guardados para los indicadores mostrados.")
 
     if limpiar:
         for r in registros:
-            for suf in ("::v1", "::v2", "::res", "::com"):
-                st.session_state["captura_manual"].pop(r["_key"]+suf, None)
+            kb = r["_key"]
+            for suf in ("::v1", "::v2", "::res", "::com", "::pct"):
+                st.session_state["captura_manual"].pop(kb+suf, None)
         st.info("Campos limpiados en esta página.")
 
+    # Construcción del DataFrame completo con resultado calculado (usando el toggle por indicador)
     rows = []
     for _, row in df_manual_filtrado.iterrows():
         nom_ind = row.get("Indicador", "")
         resp = row.get("Responsable", "")
         key_base = f"ind::{norm_txt(nom_ind)}::{norm_txt(resp)}"
+
+        v1_txt = st.session_state["captura_manual"].get(key_base+"::v1", "")
+        v2_txt = st.session_state["captura_manual"].get(key_base+"::v2", "")
+        com     = st.session_state["captura_manual"].get(key_base+"::com", "")
+        pct_ind = bool(st.session_state["captura_manual"].get(key_base+"::pct", False))
+
+        def _parse_val(txt: str, use_pct: bool):
+            v = to_num(txt)
+            if pd.isna(v): return np.nan
+            s = str(txt).strip()
+            if use_pct and (s.endswith("%") or float(v) > 1):
+                return float(v) / 100.0
+            return float(v)
+
+        v1_num = _parse_val(v1_txt, pct_ind)
+        v2_num = _parse_val(v2_txt, pct_ind)
+        if pd.notna(v1_num) and float(v1_num) != 0 and pd.notna(v2_num):
+            res_calc = float(v2_num) / float(v1_num)
+        else:
+            prev_res = st.session_state["captura_manual"].get(key_base+"::res", "")
+            res_calc = to_num(prev_res)
+
         rows.append({
             "Indicador": nom_ind,
             "Responsable": resp,
-            "Variable 1": st.session_state["captura_manual"].get(key_base+"::v1", ""),
-            "Variable 2": st.session_state["captura_manual"].get(key_base+"::v2", ""),
-            "Resultado": st.session_state["captura_manual"].get(key_base+"::res", ""),
-            "Comentarios": st.session_state["captura_manual"].get(key_base+"::com", ""),
+            "Variable 1": v1_txt,
+            "Variable 2": v2_txt,
+            "Resultado": res_calc,
+            "Comentarios": com,
         })
     captura_manual_df = pd.DataFrame(rows)
+
+
+
 
     # Hoja2: metas
     try:
@@ -351,14 +493,25 @@ if archivo_indicadores:
         metas["MetaEfectiva"] = metas.apply(lambda r: elegir_meta_efectiva(r, periodo_col), axis=1)
 
         # Resultados: captura manual + métricas automáticas de Inscritos
-        df_metricas_auto = st.session_state.get(
+                # Resultados: captura manual + métricas automáticas de Inscritos + Egresados
+        df_metricas_auto_ins = st.session_state.get(
             "metricas_auto_inscritos",
             pd.DataFrame(columns=["Indicador", "Responsable", "Resultado"]),
         )
-        resultados_all = pd.concat([
-            captura_manual_df[["Indicador", "Responsable", "Resultado"]],
-            df_metricas_auto[["Indicador", "Responsable", "Resultado"]],
-        ], ignore_index=True)
+        df_metricas_auto_eg = st.session_state.get(
+            "metricas_auto_egresados",
+            pd.DataFrame(columns=["Indicador", "Responsable", "Resultado"]),
+        )
+
+        resultados_all = pd.concat(
+            [
+                captura_manual_df[["Indicador", "Responsable", "Resultado"]],
+                df_metricas_auto_ins[["Indicador", "Responsable", "Resultado"]],
+                df_metricas_auto_eg[["Indicador", "Responsable", "Resultado"]],
+            ],
+            ignore_index=True
+        )
+
 
         resultados_all["_ind"] = resultados_all["Indicador"].map(norm_txt)
         resultados_all["_resp"] = resultados_all["Responsable"].map(norm_txt)
@@ -394,8 +547,24 @@ if archivo_indicadores:
             "Meta Ene-Abr", "Meta May-Ago", "Meta Sep-Dic", "Meta efectiva", "Resultado", "Estatus",
         ]]
 
+        # === Semáforo (emojis) ===
+        SEMAFORO = {
+            "verde": "🟢 Verde",
+            "rojo": "🔴 Rojo",
+            "pendiente": "🟡 Pendiente",
+            "sin dato": "⚪ Sin dato",
+        }
+        if not comp_out.empty:
+            comp_out.insert(
+                comp_out.columns.get_loc("Estatus") + 1,
+                "Semáforo",
+                comp_out["Estatus"].map(SEMAFORO).fillna("⚪ Sin dato")
+            )
+
         st.subheader("Metas (Hoja2) completas y comparación")
         st.dataframe(comp_out, use_container_width=True)
+
+
 
 # ================= PDF / EXCEL ================= #
 
