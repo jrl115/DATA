@@ -97,7 +97,7 @@ def app_header(
     subtitle: str,
     logo_path: str = "unaq_logo.png",
     logo_width: int = 120,
-    logo_top_pad: int = 12,   # 👈 empuja el logo hacia abajo
+    logo_top_pad: int = 20,   # 👈 empuja el logo hacia abajo
 ):
     """Encabezado de la app con logo a la derecha (sin recorte)."""
     col1, col2 = st.columns([5, 1], vertical_alignment="center")
@@ -1143,3 +1143,4 @@ with colR:
         )
     else:
         st.info("Carga Indicadores, Inscritos y Egresados y genera el comparativo para habilitar las descargas.")
+
