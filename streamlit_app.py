@@ -97,7 +97,7 @@ def app_header(
     subtitle: str,
     logo_path: str = "unaq_logo.png",
     logo_width: int = 120,
-    logo_top_pad: int = 20,   # 👈 empuja el logo hacia abajo
+    logo_top_pad: int = 12,   # 👈 empuja el logo hacia abajo
 ):
     """Encabezado de la app con logo a la derecha (sin recorte)."""
     col1, col2 = st.columns([5, 1], vertical_alignment="center")
@@ -123,6 +123,25 @@ def app_header(
         else:
             # si no hay logo, mantenemos el alto para no romper el layout
             st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+
+
+@st.cache_data(show_spinner=False)
+def leer_excel_auto(file, sheet_name=0, **kw):
+    """
+    Lee .xlsx (openpyxl), .xls (xlrd) y .xlsb (pyxlsb) automáticamente.
+    - file: st.uploaded_file_manager.UploadedFile o ruta
+    - sheet_name: índice o nombre de hoja
+    """
+    # Detectar extensión
+    name = getattr(file, "name", str(file)).lower()
+    if name.endswith(".xlsb"):
+        return pd.read_excel(file, engine="pyxlsb", sheet_name=sheet_name, **kw)
+    elif name.endswith(".xls"):
+        # requiere 'xlrd' instalado
+        return pd.read_excel(file, engine="xlrd", sheet_name=sheet_name, **kw)
+    else:
+        # .xlsx (openpyxl por defecto)
+        return pd.read_excel(file, sheet_name=sheet_name, **kw)
 
 
 def section_header(title: str, subtitle: str = "", icon: str = "📦"):
@@ -267,23 +286,25 @@ section_header(
 with st.container():
     st.markdown('<div class="card">', unsafe_allow_html=True)
     archivo_inscritos = st.file_uploader(
-        "Sube tu archivo de inscripciones (.xlsx)",
-        type="xlsx",
-        key="inscritos"
-    )
-    st.markdown('</div>', unsafe_allow_html=True)
+    "Sube tu archivo de inscripciones (.xlsx / .xls)",
+    type=["xlsx", "xls"],
+    key="inscritos"
+)
+st.markdown('</div>', unsafe_allow_html=True)
 
 conteo_inscritos_por_carrera = pd.DataFrame()
 conteo_inscritos_por_nivel = pd.DataFrame()
 
 if archivo_inscritos:
-    df_ins = leer_excel_xlsx(archivo_inscritos)
+    # Usa el lector auto–engine (.xlsx/.xls)
+    df_ins = leer_excel_auto(archivo_inscritos, sheet_name=0)
 
     # --- Vista previa ---
     st.markdown('<div class="card">', unsafe_allow_html=True)
     st.subheader("📄 Vista previa")
     st.dataframe(df_ins.head(50), use_container_width=True)
     st.markdown('</div>', unsafe_allow_html=True)
+
 
     # --- Validación mínima ---
     req_cols = ["Carrera"]
@@ -370,16 +391,35 @@ if archivo_inscritos:
 # ================= SECCIÓN: EGRESADOS ================= #
 section_header("Reporte de Egresados", "Carga, filtra y explora los egresados", "🎓")
 
+section_header("Reporte de Egresados", "Carga, filtra y explora los egresados", "🎓")
+
 with st.container():
     st.markdown('<div class="card">', unsafe_allow_html=True)
-    archivo_egresados = st.file_uploader("Sube tu archivo de egresados (.xlsb)", type="xlsb")
+    archivo_egresados = st.file_uploader(
+        "Sube tu archivo de egresados (.xlsb / .xlsx / .xls)",
+        type=["xlsb", "xlsx", "xls"],
+        key="egresados"
+    )
     st.markdown('</div>', unsafe_allow_html=True)
 
-# Se mantiene este DF para exportaciones (Excel/PDF) igual que antes
+# Se mantiene este DF para exportaciones (Excel/PDF)
 conteo_egresados_por_carrera = pd.DataFrame()
 
 if archivo_egresados:
-    df_eg = leer_excel_xlsb(archivo_egresados)
+    # Detecta extensión y usa el lector apropiado
+    fname = getattr(archivo_egresados, "name", "").lower()
+    if fname.endswith(".xlsb"):
+        df_eg = leer_excel_xlsb(archivo_egresados)
+    else:
+        # .xlsx o .xls (requiere xlrd para .xls)
+        df_eg = leer_excel_auto(archivo_egresados, sheet_name=0)
+
+    # --- Vista previa ---
+    st.markdown('<div class="card">', unsafe_allow_html=True)
+    st.subheader("📄 Vista previa")
+    st.dataframe(df_eg.head(50), use_container_width=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+
 
     # ---- Clasificador de nivel (se conserva por si lo usas en filtros)
     def clasificar_nivel_eg(carrera):
@@ -1143,4 +1183,3 @@ with colR:
         )
     else:
         st.info("Carga Indicadores, Inscritos y Egresados y genera el comparativo para habilitar las descargas.")
-
