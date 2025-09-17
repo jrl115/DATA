@@ -389,7 +389,6 @@ if archivo_inscritos:
 
 
 # ================= SECCIÓN: EGRESADOS ================= #
-section_header("Reporte de Egresados", "Carga, filtra y explora los egresados", "🎓")
 
 section_header("Reporte de Egresados", "Carga, filtra y explora los egresados", "🎓")
 
@@ -868,6 +867,7 @@ if archivo_indicadores:
 
 
 # ================= PDF / EXCEL ================= #
+import os  # ← necesario para verificar el logo
 
 def _table_col_widths(df, max_total_width):
     if df is None or df.empty:
@@ -891,154 +891,112 @@ def _table_col_widths(df, max_total_width):
     return widths
 
 
-def generar_reporte_pdf(df_indicadores, df_inscritos, df_egresados, cuatri_texto):
-    """PDF con bloques por Proceso y estilo corporativo."""
+def generar_reporte_pdf(
+    df_indicadores,
+    df_inscritos,
+    df_egresados,
+    cuatri_texto,
+    periodo_col,
+    anio,
+    logo_path="unaq_logo.png",
+):
     buffer = BytesIO()
     doc = SimpleDocTemplate(
-        buffer, pagesize=landscape(letter),
+        buffer,
+        pagesize=landscape(letter),
         leftMargin=24, rightMargin=24, topMargin=36, bottomMargin=36,
     )
     elementos = []
     estilos = getSampleStyleSheet()
 
-    # Estilos
-    estilo_title = estilos['Title']
+    estilo_normal = estilos['Normal']
+    estilo_titulo = estilos['Title']
     estilo_sub = estilos['Heading2']
     estilo_celda = ParagraphStyle(name='TablaNormal', fontSize=7, leading=8)
     estilo_header = ParagraphStyle(name='TablaHeader', fontSize=7, leading=8, textColor=colors.white, fontName='Helvetica-Bold')
 
-    azul_rey = HexColor("#0B2E59")
-    azul_process = HexColor("#2E75B6")
-    gris_process = HexColor("#5F7383")
-    gris_zebra = HexColor("#F4F6F8")
+    azul_rey = HexColor("#003366")
+    gris_zebra = HexColor("#f2f2f2")
 
+    # ==== ENCABEZADO ====
+    from reportlab.platypus import Image, Table
+
+    titulo = "Matriz de Seguimiento a Metas e Indicadores 2025"
     fecha = datetime.date.today().strftime("%d/%m/%Y")
-    elementos.append(Paragraph("METAS — Comparativo y Conteos", estilo_title))
-    elementos.append(Paragraph(f"Periodo: {cuatri_texto} — Generado el {fecha}", estilos['Normal']))
-    elementos.append(Spacer(1, 10))
 
-    # ---- Tabla de indicadores por bloque de Proceso
-    if df_indicadores is not None and not df_indicadores.empty:
-        elementos.append(Paragraph("Indicadores (Comparativo)", estilo_sub))
+    if os.path.exists(logo_path):
+        logo = Image(logo_path, width=90, height=45)
+        header_tab = Table(
+            [[logo, Paragraph(f"<b>{titulo}</b>", estilo_titulo)]],
+            colWidths=[100, 500]
+        )
+        elementos.append(header_tab)
+    else:
+        elementos.append(Paragraph(titulo, estilo_titulo))
 
-        # Orden de columnas mostradas
-        cols_show = [
-            "Indicador", "Responsable", "Periodicidad",
-            "Meta Ene-Abr", "Meta May-Ago", "Meta Sep-Dic",
-            "Meta efectiva", "Resultado", "Estatus", "Semáforo"
-        ]
-        df_src = df_indicadores.copy()
-        # Si falta alguna, la ignoramos
-        cols_show = [c for c in cols_show if c in df_src.columns]
+    # periodo expandido
+    mapa_periodos = {"Ene-Abr": "Enero – Abril", "May-Ago": "Mayo – Agosto", "Sep-Dic": "Septiembre – Diciembre"}
+    periodo_ext = mapa_periodos.get(periodo_col, periodo_col) + f" {anio}"
 
-        # Agrupar por Proceso si existe
-        if "Proceso" in df_src.columns:
-            grupos = df_src.groupby("Proceso")
-            color_toggle = True
-            for proceso, df_g in grupos:
-                # Barra de proceso
-                barra = Table([[f"Proceso: {proceso}"]],
-                              colWidths=[landscape(letter)[0] - (doc.leftMargin + doc.rightMargin)])
-                barra.setStyle(TableStyle([
-                    ('BACKGROUND', (0, 0), (-1, -1), azul_process if color_toggle else gris_process),
-                    ('TEXTCOLOR', (0, 0), (-1, -1), colors.white),
-                    ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-                    ('FONTSIZE', (0, 0), (-1, -1), 10),
-                    ('LEFTPADDING', (0, 0), (-1, -1), 6),
-                    ('RIGHTPADDING', (0, 0), (-1, -1), 6),
-                    ('TOPPADDING', (0, 0), (-1, -1), 4),
-                    ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
-                ]))
-                color_toggle = not color_toggle
-                elementos.append(barra)
-                elementos.append(Spacer(1, 4))
+    elementos.append(Paragraph(f"Periodo: {cuatri_texto} = {periodo_ext} — Generado el {fecha}", estilo_normal))
+    elementos.append(Spacer(1, 12))
 
-                # Tabla del bloque
-                df_g2 = df_g[cols_show].copy()
-                data = [[Paragraph(str(c), estilo_header) for c in df_g2.columns]]
-                for _, r in df_g2.iterrows():
-                    data.append([Paragraph(str(r[c]), estilo_celda) for c in df_g2.columns])
+    # ==== TABLAS ====
+    def agregar_tabla(titulo, df):
+        if df is None or df.empty:
+            return
+        elementos.append(Paragraph(titulo, estilo_sub))
 
-                ancho_util = landscape(letter)[0] - (doc.leftMargin + doc.rightMargin)
-                col_widths = _table_col_widths(df_g2, ancho_util)
-                t = Table(data, repeatRows=1, colWidths=col_widths)
-                stl = [
-                    ('BACKGROUND', (0, 0), (-1, 0), azul_rey),
-                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-                    ('GRID', (0, 0), (-1, -1), 0.25, colors.black),
-                    ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
-                    ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-                ]
-                for i in range(1, len(data)):
-                    if i % 2 == 0:
-                        stl.append(('BACKGROUND', (0, i), (-1, i), gris_zebra))
-                t.setStyle(TableStyle(stl))
-                elementos.append(t)
-                elementos.append(Spacer(1, 10))
-        else:
-            # Fallback: todo en una sola tabla
-            df_g2 = df_src[cols_show].copy()
-            data = [[Paragraph(str(c), estilo_header) for c in df_g2.columns]]
-            for _, r in df_g2.iterrows():
-                data.append([Paragraph(str(r[c]), estilo_celda) for c in df_g2.columns])
-            ancho_util = landscape(letter)[0] - (doc.leftMargin + doc.rightMargin)
-            col_widths = _table_col_widths(df_g2, ancho_util)
-            t = Table(data, repeatRows=1, colWidths=col_widths)
-            t.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), azul_rey),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-                ('GRID', (0, 0), (-1, -1), 0.25, colors.black),
-                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-            ]))
-            elementos.append(t)
-            elementos.append(Spacer(1, 10))
+        data = [[Paragraph(str(col), estilo_header) for col in df.columns]]
+        for _, row in df.iterrows():
+            fila = [Paragraph(str(cell), estilo_celda) for cell in row]
+            data.append(fila)
 
-    # ---- Conteos extra
-    if df_inscritos is not None and not df_inscritos.empty:
-        elementos.append(Paragraph("Inscritos (conteo por carrera)", estilo_sub))
-        data = [[Paragraph(str(c), estilo_header) for c in df_inscritos.columns]]
-        for _, r in df_inscritos.iterrows():
-            data.append([Paragraph(str(x), estilo_celda) for x in r])
         ancho_util = landscape(letter)[0] - (doc.leftMargin + doc.rightMargin)
-        col_widths = _table_col_widths(df_inscritos, ancho_util)
-        t = Table(data, repeatRows=1, colWidths=col_widths)
-        stl = [
+        col_widths = _table_col_widths(df, ancho_util)
+
+        tabla = Table(data, repeatRows=1, colWidths=col_widths)
+        estilo_tabla = [
             ('BACKGROUND', (0, 0), (-1, 0), azul_rey),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
             ('GRID', (0, 0), (-1, -1), 0.25, colors.black),
+            ('BOX', (0, 0), (-1, -1), 0.25, colors.black),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 6),
         ]
         for i in range(1, len(data)):
             if i % 2 == 0:
-                stl.append(('BACKGROUND', (0, i), (-1, i), gris_zebra))
-        t.setStyle(TableStyle(stl))
-        elementos.append(t)
-        elementos.append(Spacer(1, 10))
+                estilo_tabla.append(('BACKGROUND', (0, i), (-1, i), gris_zebra))
+        tabla.setStyle(TableStyle(estilo_tabla))
 
-    if df_egresados is not None and not df_egresados.empty:
-        elementos.append(Paragraph("Egresados (conteo por carrera)", estilo_sub))
-        data = [[Paragraph(str(c), estilo_header) for c in df_egresados.columns]]
-        for _, r in df_egresados.iterrows():
-            data.append([Paragraph(str(x), estilo_celda) for x in r])
-        ancho_util = landscape(letter)[0] - (doc.leftMargin + doc.rightMargin)
-        col_widths = _table_col_widths(df_egresados, ancho_util)
-        t = Table(data, repeatRows=1, colWidths=col_widths)
-        stl = [
-            ('BACKGROUND', (0, 0), (-1, 0), azul_rey),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-            ('GRID', (0, 0), (-1, -1), 0.25, colors.black),
-        ]
-        for i in range(1, len(data)):
-            if i % 2 == 0:
-                stl.append(('BACKGROUND', (0, i), (-1, i), gris_zebra))
-        t.setStyle(TableStyle(stl))
-        elementos.append(t)
+        elementos.append(tabla)
+        elementos.append(Spacer(1, 12))
 
-    # Footer
-    def _footer(canvas, docx):
+    agregar_tabla("Indicadores (Comparativo)", df_indicadores)
+    agregar_tabla("Inscritos (conteo por carrera)", df_inscritos)
+    agregar_tabla("Egresados (conteo por carrera)", df_egresados)
+
+    # ==== PIE CON ALCANCE Y CRITERIOS ====
+    elementos.append(Spacer(1, 20))
+    elementos.append(Paragraph(
+        "Alcance de la certificación ISO 9001:2015 Servicio Educativo de Técnico Superior Universitario, Ingeniería y Educación Continua.",
+        estilo_normal
+    ))
+    elementos.append(Paragraph(
+        "Para los valores meta que no se cumplan, el responsable del indicador toma acciones de acuerdo al procedimiento <b>P030-SIG-Servicio No Conforme, Acciones Correctivas y Mejora</b>.",
+        estilo_normal
+    ))
+    elementos.append(Paragraph(
+        "Los criterios para determinar una muestra representativa son los determinados por la Dirección General de Universidades Tecnológicas y Politécnicas (DGUTyP) en su Modelo de Evaluación de la Calidad del Subsistema de Universidades Tecnológicas y Politécnicas (MECASUTyP).",
+        estilo_normal
+    ))
+
+    def _footer(canvas, doc):
         canvas.saveState()
         canvas.setFont("Helvetica", 8)
-        text = f"{cuatri_texto} — Página {docx.page}"
-        canvas.drawRightString(landscape(letter)[0] - docx.rightMargin, 18, text)
+        text = f"{periodo_ext} — Página {doc.page}"
+        canvas.drawRightString(landscape(letter)[0] - doc.rightMargin, 18, text)
         canvas.restoreState()
 
     doc.build(elementos, onFirstPage=_footer, onLaterPages=_footer)
@@ -1046,71 +1004,130 @@ def generar_reporte_pdf(df_indicadores, df_inscritos, df_egresados, cuatri_texto
     return buffer.read()
 
 
-def exportar_excel_corporativo(comp_out, conteo_inscritos_por_carrera, conteo_egresados_por_carrera, cuatrimestre_actual):
+def exportar_excel_corporativo(
+    comp_out: pd.DataFrame,
+    conteo_inscritos_por_carrera: pd.DataFrame,
+    conteo_egresados_por_carrera: pd.DataFrame,
+    cuatrimestre_actual: str,
+    periodo_ext: str,                         # p.ej. "Mayo – Agosto 2025"
+    logo_path: str = "unaq_logo.png",
+):
     """
-    Excel con estilo similar a tu plantilla:
-    - Título principal
-    - Bandas por Proceso
-    - Cabeceras y bordes
-    - Semáforo/Estatus coloreado
+    Exporta un XLSX 'corporativo':
+      - Encabezado con logo + título "METAS — Cx AAAA"
+      - Línea de metadatos (Periodo y fecha de generación)
+      - Sección: Indicadores (Comparativo) con bandas por Proceso
+      - Bloques 'Alcance' + texto y 'Leyenda'
+      - Hojas extra: Inscritos y Egresados (tablas simples)
     """
+    from datetime import date
     buf = BytesIO()
     with pd.ExcelWriter(buf, engine="xlsxwriter") as writer:
         wb = writer.book
 
-        # ---- Formatos
+        # ======== FORMATS ======== #
         f_title = wb.add_format({
             'bold': True, 'font_size': 16, 'align': 'center', 'valign': 'vcenter',
             'font_color': 'white', 'bg_color': '#0B2E59'
         })
+        f_band_top = wb.add_format({'bold': True, 'font_size': 11, 'align': 'center',
+                                    'valign': 'vcenter', 'font_color': 'white',
+                                    'bg_color': '#203A6B'})  # navy
+        f_band_blue = wb.add_format({'bold': True, 'font_color': 'white',
+                                     'bg_color': '#2E75B6', 'border': 1})
+        f_band_gray = wb.add_format({'bold': True, 'font_color': 'white',
+                                     'bg_color': '#5F7383', 'border': 1})
+
+        f_meta = wb.add_format({'font_size': 10, 'italic': True, 'align': 'left'})
+        f_section = wb.add_format({'bold': True, 'font_size': 12})
+
         f_hdr = wb.add_format({
             'bold': True, 'align': 'center', 'valign': 'vcenter',
             'font_color': 'white', 'bg_color': '#0B2E59', 'border': 1
         })
-        f_cell = wb.add_format({'align': 'left', 'valign': 'top', 'border': 1})
+        f_cell = wb.add_format({'align': 'left',  'valign': 'top', 'border': 1})
         f_num  = wb.add_format({'align': 'right', 'valign': 'vcenter', 'border': 1})
-        f_band_blue = wb.add_format({'bold': True, 'font_color': 'white', 'bg_color': '#2E75B6', 'border': 1})
-        f_band_gray = wb.add_format({'bold': True, 'font_color': 'white', 'bg_color': '#5F7383', 'border': 1})
 
         f_est_verde = wb.add_format({'align': 'center', 'border': 1, 'bg_color': '#C6E0B4'})
         f_est_rojo  = wb.add_format({'align': 'center', 'border': 1, 'bg_color': '#F8CBAD'})
         f_est_pend  = wb.add_format({'align': 'center', 'border': 1, 'bg_color': '#FFE699'})
         f_est_sin   = wb.add_format({'align': 'center', 'border': 1, 'bg_color': '#D9D9D9'})
 
-        # ---- Comparativo (corporativo)
+        f_scope_title = wb.add_format({'bold': True, 'align': 'center', 'valign': 'vcenter',
+                                       'font_color': 'white', 'bg_color': '#4F9ED1'})
+        f_scope_dark  = wb.add_format({'bold': True, 'align': 'center', 'valign': 'vcenter',
+                                       'font_color': 'white', 'bg_color': '#1F2E55'})
+        f_text = wb.add_format({'text_wrap': True, 'valign': 'top'})
+
+        f_leg = wb.add_format({'align': 'left'})
+
+        # ======== HOJA COMPARATIVO ======== #
         ws = wb.add_worksheet("Comparativo")
-        # Columnas a mostrar
-        base_cols = [
-            "Indicador", "Responsable", "Periodicidad",
-            "Meta Ene-Abr", "Meta May-Ago", "Meta Sep-Dic",
-            "Meta efectiva", "Resultado", "Estatus", "Semáforo"
-        ]
-        cols = [c for c in base_cols if c in comp_out.columns]
 
-        # Título
-        ncols = len(cols)
-        ws.merge_range(0, 0, 1, ncols-1, f"METAS — {cuatrimestre_actual}", f_title)
-
-        # Cabeceras
-        for j, c in enumerate(cols):
-            ws.write(3, j, c, f_hdr)
-
-        # Anchos sugeridos
+        # Dimensiones de columnas (ajústalas si quieres)
         widths = {
             "Indicador": 48, "Responsable": 12, "Periodicidad": 12,
             "Meta Ene-Abr": 12, "Meta May-Ago": 12, "Meta Sep-Dic": 12,
-            "Meta efectiva": 14, "Resultado": 12, "Estatus": 12, "Semáforo": 12
+            "Meta efectiva": 14, "Resultado": 12, "Estatus": 12,
         }
+
+        # Definimos las columnas a exportar (sin "Semáforo")
+        base_cols = [
+            "Indicador", "Responsable", "Periodicidad",
+            "Meta Ene-Abr", "Meta May-Ago", "Meta Sep-Dic",
+            "Meta efectiva", "Resultado", "Estatus"
+        ]
+        cols = [c for c in base_cols if c in comp_out.columns]
+        ncols = len(cols)
+        last_col = ncols - 1
+
+        # --- Encabezado con logo + Título
+        # Filas para el encabezado:
+        # 0-1 -> título; 2 -> banda navy separadora; 3 -> meta/periodo
+        ws.set_row(0, 32)
+        ws.set_row(1, 24)
+        ws.set_row(2, 18)
+        ws.set_row(3, 18)
+
+        # título “METAS — Cx AAAA”
+        ws.merge_range(0, 0, 1, last_col, f"METAS — {cuatrimestre_actual}", f_title)
+
+        # logo (opcional)
+        if os.path.exists(logo_path):
+            # esquina izquierda sobre las filas 0..2
+            ws.insert_image(0, 0, logo_path, {
+                'x_scale': 0.55, 'y_scale': 0.55, 'x_offset': 6, 'y_offset': 4
+            })
+
+        # banda separadora navy
+        ws.merge_range(2, 0, 2, last_col, "", f_band_top)
+
+        # metadatos de periodo
+        fecha_hoy = date.today().strftime("%d/%m/%Y")
+        ws.write(3, 0, f"Periodo: {cuatrimestre_actual} = {periodo_ext} — Generado el {fecha_hoy}", f_meta)
+        if last_col > 0:
+            ws.merge_range(3, 0, 3, last_col, f"Periodo: {cuatrimestre_actual} = {periodo_ext} — Generado el {fecha_hoy}", f_meta)
+
+        # Sección
+        ws.write(5, 0, "Indicadores (Comparativo)", f_section)
+        if last_col > 0:
+            ws.merge_range(5, 0, 5, last_col, "Indicadores (Comparativo)", f_section)
+
+        # cabecera de tabla
+        start_row = 7
         for j, c in enumerate(cols):
+            ws.write(start_row, j, c, f_hdr)
             ws.set_column(j, j, widths.get(c, 14))
 
-        # Filas por Proceso en bandas
+        # filas por proceso en bandas
+        row = start_row + 1
         df_cmp = comp_out.copy()
         band_blue = True
-        row = 4
+
         if "Proceso" in df_cmp.columns:
             for proceso, df_g in df_cmp.groupby("Proceso"):
-                ws.merge_range(row, 0, row, ncols-1, f"Proceso: {proceso}", f_band_blue if band_blue else f_band_gray)
+                ws.merge_range(row, 0, row, last_col, f"Proceso: {proceso}",
+                               f_band_blue if band_blue else f_band_gray)
                 band_blue = not band_blue
                 row += 1
                 for _, r in df_g.iterrows():
@@ -1133,16 +1150,52 @@ def exportar_excel_corporativo(comp_out, conteo_inscritos_por_carrera, conteo_eg
                     ws.write(row, j, r.get(c, ""), f_cell)
                 row += 1
 
-        # ---- Hoja Inscritos
+        # ======== BLOQUES “ALCANCE” ======== #
+        row += 2
+        ws.merge_range(row, 0, row, last_col, "Alcance", f_scope_title); row += 1
+        ws.merge_range(
+            row, 0, row, last_col,
+            "Alcance de la certificación ISO 9001:2015 Servicio Educativo de Técnico Superior Universitario, "
+            "Ingeniería y Educación Continua.",
+            f_text
+        ); row += 1
+        ws.merge_range(row, 0, row, last_col,
+                       "Para los valores meta que no se cumplan, el responsable del indicador toma acciones de "
+                       "acuerdo al procedimiento P030-SIG-Servicio No Conforme, Acciones Correctivas y Mejora.",
+                       f_scope_dark); row += 1
+        ws.merge_range(
+            row, 0, row, last_col,
+            "Los criterios para determinar una muestra representativa son los determinados por la Dirección General de "
+            "Universidades Tecnológicas y Politécnicas (DGUTyP) en su Modelo de Evaluación de la Calidad del Subsistema "
+            "de Universidades Tecnológicas y Politécnicas (MECASUTyP).",
+            f_text
+        ); row += 2
+
+        # ======== LEYENDA ======== #
+        # Usamos emojis para aproximar los bullets de colores
+        legend = [
+            "🟢 Cumple la meta planteada.",
+            "🟡 Margen ± 1% la meta planteada.",
+            "⚪ N/A No se aplica evaluación en el periodo.",
+            "🔴 No cumple la meta.",
+            "🔵 No cumple los criterios para determinar una muestra representativa."
+        ]
+        for item in legend:
+            ws.write(row, 0, item, f_leg)
+            if last_col > 0:
+                ws.merge_range(row, 0, row, last_col, item, f_leg)
+            row += 1
+
+        # ======== Hojas “Inscritos” y “Egresados” simples ======== #
         if not conteo_inscritos_por_carrera.empty:
             conteo_inscritos_por_carrera.to_excel(writer, sheet_name="Inscritos", index=False)
 
-        # ---- Hoja Egresados
         if not conteo_egresados_por_carrera.empty:
             conteo_egresados_por_carrera.to_excel(writer, sheet_name="Egresados", index=False)
 
     buf.seek(0)
     return buf
+
 
 
 # ===== DESCARGAS ===== #
@@ -1151,14 +1204,22 @@ colL, colR = st.columns([3, 2])
 with colL:
     if 'comp_out' in locals() and not comp_out.empty:
         # Excel corporativo
+        # Construye el periodo extendido para mostrar (igual al PDF)
+        mapa_periodos = {"Ene-Abr": "Enero – Abril", "May-Ago": "Mayo – Agosto", "Sep-Dic": "Septiembre – Diciembre"}
+        periodo_ext = f"{mapa_periodos.get(periodo_col, periodo_col)} {anio}"
+
         excel_buffer = exportar_excel_corporativo(
             comp_out,
             conteo_inscritos_por_carrera if 'conteo_inscritos_por_carrera' in locals() else pd.DataFrame(),
             conteo_egresados_por_carrera if 'conteo_egresados_por_carrera' in locals() else pd.DataFrame(),
-            cuatrimestre_actual
+            cuatrimestre_actual,
+            periodo_ext,
+            logo_path="unaq_logo.png",      # opcional
         )
+
+
         st.download_button(
-            "📊 Descargar Excel (estilo corporativo)",
+            "📊 Descargar Excel",
             data=excel_buffer,
             file_name=f"Metas_{cuatrimestre_actual.replace(' ', '_')}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -1168,12 +1229,16 @@ with colR:
     if 'comp_out' in locals() and not comp_out.empty \
        and 'conteo_inscritos_por_carrera' in locals() and not conteo_inscritos_por_carrera.empty \
        and 'conteo_egresados_por_carrera' in locals() and not conteo_egresados_por_carrera.empty:
+
         st.subheader("🖨️ Reporte PDF")
         pdf_bytes = generar_reporte_pdf(
             comp_out,
             conteo_inscritos_por_carrera,
             conteo_egresados_por_carrera,
-            cuatrimestre_actual
+            cuatrimestre_actual,
+            periodo_col,  # ← ahora se pasa el periodo
+            anio,         # ← y el año para “Mayo – Agosto 2025”
+            logo_path="unaq_logo.png"
         )
         st.download_button(
             "📥 Descargar PDF (estilo corporativo)",
