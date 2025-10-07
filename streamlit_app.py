@@ -30,64 +30,83 @@ MUTED     = "#586069"   # gris texto
 
 st.markdown(f"""
 <style>
-/* Fondo de la app y tarjetas */
-[data-testid="stAppViewContainer"] {{
-  background: #0E1117;
+:root {{
+  --bg: #f8fafc;           /* fondo claro */
+  --panel: #ffffff;        /* tarjetas/paneles */
+  --text: #111827;         /* texto principal */
+  --muted: #4b5563;        /* texto secundario */
+  --border: rgba(0,0,0,.08);
+  --band1: {PRIMARY};      /* mantiene tu paleta corporativa */
+  --band2: {SECONDARY};
 }}
+
+/* Fondo general de la app */
+[data-testid="stAppViewContainer"] {{
+  background: var(--bg);
+  color: var(--text);
+}}
+
 .block-container {{
-  padding-top: 0.6rem;
+  padding-top: .6rem;
   padding-bottom: 2rem;
   max-width: 1400px;
 }}
+
 /* Header con logo */
 .app-header {{
   display:flex; align-items:center; justify-content:space-between;
   gap:16px; padding:10px 4px 2px 4px; margin-bottom:10px;
-  border-bottom: 1px solid rgba(255,255,255,0.08);
+  border-bottom: 1px solid var(--border);
 }}
-.app-header h1 {{ margin:0; font-size:1.6rem; }}
-.app-header p  {{ margin:.25rem 0 0 0; color:#c9d1d9; }}
+.app-header h1 {{ margin:0; font-size:1.6rem; color: var(--text); }}
+.app-header p  {{ margin:.25rem 0 0 0; color: var(--muted); }}
 
-/* “Cinta” de sección */
+/* “Cinta” de sección: conserva tu gradiente corporativo */
 .section-band {{
-  background: linear-gradient(90deg, {PRIMARY} 0%, {SECONDARY} 60%, transparent 100%);
+  background: linear-gradient(90deg, var(--band1) 0%, var(--band2) 60%, rgba(255,255,255,0) 100%);
   border-radius: 14px;
   color: white;
   padding: 14px 18px;
   margin: 8px 0 18px 0;
-  border: 1px solid rgba(255,255,255,0.08);
+  border: 1px solid rgba(0,0,0,.04);
 }}
 .section-band h2 {{
   font-size: 1.15rem;
   margin: 0;
   letter-spacing: .2px;
 }}
-/* Tarjeta simple */
+
+/* Tarjeta */
 .card {{
-  border: 1px solid rgba(255,255,255,0.08);
+  border: 1px solid var(--border);
   border-radius: 14px;
   padding: 14px 16px;
-  background: rgba(255,255,255,0.02);
+  background: var(--panel);
   margin-bottom: 10px;
+  box-shadow: 0 1px 2px rgba(0,0,0,.04);
 }}
+
 /* Chips */
 .chip {{
   display:inline-block; padding:3px 10px; border-radius: 999px; font-size:.82rem;
-  border:1px solid rgba(255,255,255,.15); margin-right:6px; color:#E6E6E6;
+  border:1px solid rgba(0,0,0,.12); margin-right:6px; color: var(--muted);
+  background:#f3f4f6;
 }}
-/* Etiquetas de estado (semaforo) */
-.badge {{
-  padding: 4px 10px; border-radius: 999px; color: #0E1117; font-weight: 600; display:inline-block;
-}}
-.badge-green  {{ background:#52c41a; }}
-.badge-red    {{ background:#ff4d4f; }}
-.badge-amber  {{ background:#fadb14; }}
-.badge-grey   {{ background:#d9d9d9; }}
 
-/* Dataframe: reducir espacio y hacer cabezal sticky */
-.dataframe thead tr th {{ position: sticky; top: 0; background: #1C212A; z-index: 2; }}
+/* Etiquetas de estado (semaforo) con texto oscuro para contraste en claro */
+.badge {{
+  padding: 4px 10px; border-radius: 999px; color: #111827; font-weight: 600; display:inline-block;
+}}
+.badge-green  {{ background:#bbf7d0; }}
+.badge-red    {{ background:#fecaca; }}
+.badge-amber  {{ background:#fde68a; }}
+.badge-grey   {{ background:#e5e7eb; }}
+
+/* Dataframe: cabezal sticky en claro */
+.dataframe thead tr th {{ position: sticky; top: 0; background: #f9fafb; z-index: 2; }}
 </style>
 """, unsafe_allow_html=True)
+
 
 import os
 import streamlit as st
