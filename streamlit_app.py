@@ -1019,11 +1019,11 @@ def exportar_excel_corporativo(
         # ======== FORMATS ======== #
         f_title = wb.add_format({
             'bold': True, 'font_size': 16, 'align': 'center', 'valign': 'vcenter',
-            'font_color': 'white', 'bg_color': '#0B2E59'
+            'font_color': 'white', 'bg_color': "#58AAF7"
         })
         f_band_top = wb.add_format({'bold': True, 'font_size': 11, 'align': 'center',
                                     'valign': 'vcenter', 'font_color': 'white',
-                                    'bg_color': '#203A6B'})  # navy
+                                    'bg_color': "#2E75B6"})  # navy
         f_band_blue = wb.add_format({'bold': True, 'font_color': 'white',
                                      'bg_color': '#2E75B6', 'border': 1})
         f_band_gray = wb.add_format({'bold': True, 'font_color': 'white',
@@ -1087,7 +1087,7 @@ def exportar_excel_corporativo(
         if os.path.exists(logo_path):
             # esquina izquierda sobre las filas 0..2
             ws.insert_image(0, 0, logo_path, {
-                'x_scale': 0.55, 'y_scale': 0.55, 'x_offset': 6, 'y_offset': 4
+                'x_scale': 0.25, 'y_scale': 0.25, 'x_offset': 6, 'y_offset': 4
             })
 
         # banda separadora navy
