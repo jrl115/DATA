@@ -28,84 +28,56 @@ DANGER    = "#E76F51"   # rojo coral
 INFO      = "#457B9D"   # azul info
 MUTED     = "#586069"   # gris texto
 
-st.markdown(f"""
+st.markdown("""
 <style>
-:root {{
-  --bg: #f8fafc;           /* fondo claro */
-  --panel: #ffffff;        /* tarjetas/paneles */
-  --text: #111827;         /* texto principal */
-  --muted: #4b5563;        /* texto secundario */
-  --border: rgba(0,0,0,.08);
-  --band1: {PRIMARY};      /* mantiene tu paleta corporativa */
-  --band2: {SECONDARY};
-}}
+/* ==== FILE UPLOADER (claro) ==== */
+[data-testid="stFileUploaderDropzone"]{
+  background:#FFFFFF !important;
+  border: 2px dashed rgba(17,24,39,.18) !important;   /* gris suave */
+  border-radius: 12px !important;
+  color:#111827 !important;
+  box-shadow:none !important;
+  outline:none !important;
+}
+[data-testid="stFileUploaderDropzone"]:hover{
+  background:#FAFCFF !important;
+  border-color:#2A9D8F !important;                    /* tu secundario */
+}
 
-/* Fondo general de la app */
-[data-testid="stAppViewContainer"] {{
-  background: var(--bg);
-  color: var(--text);
-}}
+/* Texto interno del dropzone */
+[data-testid="stFileUploaderDropzone"] *{
+  color:#111827 !important;
+}
 
-.block-container {{
-  padding-top: .6rem;
-  padding-bottom: 2rem;
-  max-width: 1400px;
-}}
+/* Botón/enlace “Browse files” (a veces es link, a veces botón) */
+[data-testid="stFileUploaderDropzone"] [role="button"],
+[data-testid="stFileUploaderDropzone"] a{
+  background:#FFFFFF !important;
+  border:1px solid rgba(17,24,39,.2) !important;
+  border-radius: 10px !important;
+  color:#111827 !important;
+  padding:6px 12px !important;
+  box-shadow:none !important;
+}
 
-/* Header con logo */
-.app-header {{
-  display:flex; align-items:center; justify-content:space-between;
-  gap:16px; padding:10px 4px 2px 4px; margin-bottom:10px;
-  border-bottom: 1px solid var(--border);
-}}
-.app-header h1 {{ margin:0; font-size:1.6rem; color: var(--text); }}
-.app-header p  {{ margin:.25rem 0 0 0; color: var(--muted); }}
+/* Área que envuelve el dropzone (algunos temas aplican color aquí) */
+[data-testid="stFileUploader"] section[tabindex]{
+  background:#FFFFFF !important;
+  color:#111827 !important;
+  border-radius:12px !important;
+}
 
-/* “Cinta” de sección: conserva tu gradiente corporativo */
-.section-band {{
-  background: linear-gradient(90deg, var(--band1) 0%, var(--band2) 60%, rgba(255,255,255,0) 100%);
-  border-radius: 14px;
-  color: white;
-  padding: 14px 18px;
-  margin: 8px 0 18px 0;
-  border: 1px solid rgba(0,0,0,.04);
-}}
-.section-band h2 {{
-  font-size: 1.15rem;
-  margin: 0;
-  letter-spacing: .2px;
-}}
-
-/* Tarjeta */
-.card {{
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 14px 16px;
-  background: var(--panel);
-  margin-bottom: 10px;
-  box-shadow: 0 1px 2px rgba(0,0,0,.04);
-}}
-
-/* Chips */
-.chip {{
-  display:inline-block; padding:3px 10px; border-radius: 999px; font-size:.82rem;
-  border:1px solid rgba(0,0,0,.12); margin-right:6px; color: var(--muted);
-  background:#f3f4f6;
-}}
-
-/* Etiquetas de estado (semaforo) con texto oscuro para contraste en claro */
-.badge {{
-  padding: 4px 10px; border-radius: 999px; color: #111827; font-weight: 600; display:inline-block;
-}}
-.badge-green  {{ background:#bbf7d0; }}
-.badge-red    {{ background:#fecaca; }}
-.badge-amber  {{ background:#fde68a; }}
-.badge-grey   {{ background:#e5e7eb; }}
-
-/* Dataframe: cabezal sticky en claro */
-.dataframe thead tr th {{ position: sticky; top: 0; background: #f9fafb; z-index: 2; }}
+/* Chips de archivos ya cargados */
+[data-testid="stFileUploader"] [data-testid="stFileUploaderFile"]{
+  background:#F3F4F6 !important;
+  color:#111827 !important;
+  border:1px solid rgba(17,24,39,.12) !important;
+  border-radius:10px !important;
+}
 </style>
 """, unsafe_allow_html=True)
+
+
 
 
 import os
